@@ -534,8 +534,8 @@ client.on(Events.MessageCreate, async (message) => {
         // ═══════════════════════════════════════════════════════════════
         // GITHUB LINK ANALYSIS
         // ═══════════════════════════════════════════════════════════════
-        const githubFileRegex = /https?:\/\/github\.com\/([^\/]+)\/([^\/]+)\/blob\/([^\/]+)\/(.+)/;
-        const githubRepoRegex = /https?:\/\/github\.com\/([^\/]+)\/([^\/]+)(?:\/)?$/;
+        const githubFileRegex = /https?:\/\/github\.com\/([^\/]+)\/([^\/]+)\/blob\/([^\/]+)\/(\S+)/;
+        const githubRepoRegex = /https?:\/\/github\.com\/([^\/]+)\/([^\/]+?)(?:\s|$|\/)/;
 
         const fileMatch = message.content.match(githubFileRegex);
         const repoMatch = message.content.match(githubRepoRegex);
