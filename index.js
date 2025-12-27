@@ -494,8 +494,18 @@ client.on(Events.MessageCreate, async (message) => {
         const wantsImage = lowerContent.startsWith('imagine ') || /generate .* image/i.test(message.content); // Simplified regex for rewrite safety, ideally use full regex
 
         if (wantsImage) {
-            // ... (Image Gen Logic) ...
-            // Pollinations AI logic
+            const prompt = message.content.replace(/^imagine\s+/i, '').replace(/generate .* image/i, '').trim();
+            if (!prompt) return message.reply('❌ Please provide a prompt!');
+
+            const encodedPrompt = encodeURIComponent(prompt);
+            const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}`;
+
+            const embed = new EmbedBuilder()
+                .setTitle(`🎨 Generated Image: ${prompt}`)
+                .setImage(imageUrl)
+                .setFooter({ text: 'Powered by Pollinations.ai' });
+
+            await message.reply({ embeds: [embed] });
             return;
         }
 
