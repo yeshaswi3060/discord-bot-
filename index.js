@@ -593,6 +593,7 @@ client.on(Events.MessageCreate, async (message) => {
                 }
             } catch (e) {
                 console.error('GitHub Analysis Error:', e.message);
+                await message.reply('❌ I could not read that GitHub link. Is the repo private or the file too large?');
             }
         }
 
