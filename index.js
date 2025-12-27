@@ -355,90 +355,89 @@ Be direct and helpful. ALWAYS use Discord markdown. Format code in triple backti
             }
             return;
         }
-    }
 
-    // Handle Image Buttons
-    if (customId.startsWith('img_')) {
-        await interaction.deferUpdate();
+        // Handle Image Buttons
+        if (customId.startsWith('img_')) {
+            await interaction.deferUpdate();
 
-        const parts = customId.split('_');
-        const action = parts[1]; // 'regen' or 'enhance'
-        const messageId = parts[2];
+            const parts = customId.split('_');
+            const action = parts[1]; // 'regen' or 'enhance'
+            const messageId = parts[2];
 
-        const context = client.imageContexts.get(messageId);
-        if (!context) {
-            await interaction.followUp({ content: '❌ Image session expired.', ephemeral: true });
+            const context = client.imageContexts.get(messageId);
+            if (!context) {
+                await interaction.followUp({ content: '❌ Image session expired.', ephemeral: true });
+                return;
+            }
+
+            let prompt = context.prompt;
+
+            // Enhance Logic
+            if (action === 'enhance') {
+                try {
+                    await interaction.followUp({ content: '✨ Enhancing prompt with AI...', ephemeral: true });
+                    // Use OpenRouter to enhance
+                    const enhanceResponse = await axios.post(
+                        'https://openrouter.ai/api/v1/chat/completions',
+                        {
+                            model: 'openai/gpt-4o-mini',
+                            messages: [
+                                { role: 'system', content: 'You are an expert AI art prompter. Rewrite the user\'s prompt to be highly detailed, artistic, and descriptive. Output ONLY the raw prompt. No quotes.' },
+                                { role: 'user', content: prompt }
+                            ]
+                        },
+                        { headers: { 'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}` } }
+                    );
+                    prompt = enhanceResponse.data.choices[0].message.content;
+                    // Update context with new prompt for further regen
+                    context.prompt = prompt;
+                    client.imageContexts.set(messageId, context);
+                } catch (e) {
+                    console.error('Enhance failed', e);
+                }
+            }
+
+            const encodedPrompt = encodeURIComponent(prompt);
+            const seed = Math.floor(Math.random() * 1000000);
+            const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&seed=${seed}&nologo=true`;
+
+            const embed = new EmbedBuilder()
+                .setTitle(`🎨 Generated Image: ${prompt.substring(0, 50)}...`) // Truncate title
+                .setDescription(`**Prompt:** ${prompt.substring(0, 200)}`)
+                .setImage(imageUrl)
+                .setFooter({ text: `Powered by Pollinations.ai | Seed: ${seed}` });
+
+            await interaction.message.edit({ embeds: [embed] });
             return;
         }
-
-        let prompt = context.prompt;
-
-        // Enhance Logic
-        if (action === 'enhance') {
-            try {
-                await interaction.followUp({ content: '✨ Enhancing prompt with AI...', ephemeral: true });
-                // Use OpenRouter to enhance
-                const enhanceResponse = await axios.post(
-                    'https://openrouter.ai/api/v1/chat/completions',
-                    {
-                        model: 'openai/gpt-4o-mini',
-                        messages: [
-                            { role: 'system', content: 'You are an expert AI art prompter. Rewrite the user\'s prompt to be highly detailed, artistic, and descriptive. Output ONLY the raw prompt. No quotes.' },
-                            { role: 'user', content: prompt }
-                        ]
-                    },
-                    { headers: { 'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}` } }
-                );
-                prompt = enhanceResponse.data.choices[0].message.content;
-                // Update context with new prompt for further regen
-                context.prompt = prompt;
-                client.imageContexts.set(messageId, context);
-            } catch (e) {
-                console.error('Enhance failed', e);
-            }
-        }
-
-        const encodedPrompt = encodeURIComponent(prompt);
-        const seed = Math.floor(Math.random() * 1000000);
-        const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&seed=${seed}&nologo=true`;
-
-        const embed = new EmbedBuilder()
-            .setTitle(`🎨 Generated Image: ${prompt.substring(0, 50)}...`) // Truncate title
-            .setDescription(`**Prompt:** ${prompt.substring(0, 200)}`)
-            .setImage(imageUrl)
-            .setFooter({ text: `Powered by Pollinations.ai | Seed: ${seed}` });
-
-        await interaction.message.edit({ embeds: [embed] });
-        return;
     }
-}
 
     // Handle slash commands
     if (!interaction.isChatInputCommand()) return;
 
-const command = client.commands.get(interaction.commandName);
+    const command = client.commands.get(interaction.commandName);
 
-if (!command) {
-    console.error(`No command matching ${interaction.commandName} was found.`);
-    return;
-}
-
-try {
-    await command.execute(interaction);
-} catch (error) {
-    console.error(`Error executing ${interaction.commandName}:`, error);
-
-    const errorMessage = {
-        content: '❌ There was an error while executing this command!',
-        ephemeral: true
-    };
-
-    if (interaction.replied || interaction.deferred) {
-        await interaction.followUp(errorMessage);
-    } else {
-        await interaction.reply(errorMessage);
+    if (!command) {
+        console.error(`No command matching ${interaction.commandName} was found.`);
+        return;
     }
-}
+
+    try {
+        await command.execute(interaction);
+    } catch (error) {
+        console.error(`Error executing ${interaction.commandName}:`, error);
+
+        const errorMessage = {
+            content: '❌ There was an error while executing this command!',
+            ephemeral: true
+        };
+
+        if (interaction.replied || interaction.deferred) {
+            await interaction.followUp(errorMessage);
+        } else {
+            await interaction.reply(errorMessage);
+        }
+    }
 });
 
 // Handle prefix commands AND track messages
