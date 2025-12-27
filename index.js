@@ -585,7 +585,8 @@ client.on(Events.MessageCreate, async (message) => {
             if (!prompt) return message.reply('❌ Please provide a prompt!');
 
             const encodedPrompt = encodeURIComponent(prompt);
-            const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}`;
+            const seed = Math.floor(Math.random() * 1000000);
+            const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&seed=${seed}&nologo=true`;
 
             const embed = new EmbedBuilder()
                 .setTitle(`🎨 Generated Image: ${prompt}`)
