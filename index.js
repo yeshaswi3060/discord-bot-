@@ -835,3 +835,4 @@ client.on(Events.MessageCreate, async (message) => {
 
 // Login
 client.login(process.env.DISCORD_TOKEN);
+// Force Render Redeploy
