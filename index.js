@@ -546,17 +546,21 @@ client.on(Events.MessageCreate, async (message) => {
                 let contextType = '';
 
                 if (fileMatch) {
+                    await message.reply('🔍 Detected GitHub File Link. Fetching raw content...');
                     const [, owner, repo, branch, filePath] = fileMatch;
                     const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${filePath}`;
+                    console.log(`GitHub Fetch: ${rawUrl}`);
                     const response = await axios.get(rawUrl, { responseType: 'text', timeout: 10000 });
                     codeContent = response.data;
                     contextType = `File: ${filePath}`;
                 } else if (repoMatch) {
+                    await message.reply('🔍 Detected GitHub Repo Link. Fetching README...');
                     const [, owner, repo] = repoMatch;
-                    const branches = ['main', 'master'];
+                    const branches = ['main', 'master', 'dev'];
                     for (const branch of branches) {
                         try {
                             const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/README.md`;
+                            console.log(`GitHub Fetch: ${rawUrl}`);
                             const response = await axios.get(rawUrl, { responseType: 'text', timeout: 5000 });
                             codeContent = response.data;
                             contextType = `Repository: ${owner}/${repo} (README)`;
