@@ -309,7 +309,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
                             {
                                 role: 'system',
                                 content: `You are a smart AI assistant in Discord. The user's name is ${regenData.userName}.
-Be direct and helpful. Use Discord markdown. Keep responses under 1800 chars.`
+Be direct and helpful. ALWAYS use Discord markdown. Format code in triple backticks. Keep responses under 1800 chars.`
                             },
                             { role: 'user', content: regenData.originalContent }
                         ],
@@ -648,7 +648,7 @@ client.on(Events.MessageCreate, async (message) => {
                     // Gemini Logic
                     requestUrl = `${provider.url}?key=${provider.key}`;
                     const geminiContents = [];
-                    const systemPrompt = `You are a smart AI assistant. User: ${userName}. Use Markdown.`;
+                    const systemPrompt = `You are a smart AI assistant. User: ${userName}. ALWAYS use Discord Markdown. Format code with \`\`\`.`;
 
                     let isFirst = true;
                     for (const msg of userHistory) {
@@ -665,7 +665,7 @@ client.on(Events.MessageCreate, async (message) => {
                     requestBody = {
                         model: provider.model,
                         messages: [
-                            { role: 'system', content: `You are a smart AI assistant. User: ${userName}.` },
+                            { role: 'system', content: `You are a smart AI assistant. User: ${userName}. ALWAYS use Discord Markdown. Format code with \`\`\`.` },
                             ...userHistory
                         ],
                         max_tokens: 1000
