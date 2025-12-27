@@ -475,15 +475,102 @@ client.on(Events.MessageCreate, async (message) => {
             return;
         }
 
-        // ... (GitHub/Image Analysis skipped for brevity in this manual partial rewrite logic demonstration - 
-        // WAIT, I must implement them fully or I lose features. I will implement them.)
+        // ═══════════════════════════════════════════════════════════════
+        // GITHUB LINK ANALYSIS
+        // ═══════════════════════════════════════════════════════════════
+        const githubFileRegex = /https?:\/\/github\.com\/([^\/]+)\/([^\/]+)\/blob\/([^\/]+)\/(.+)/;
+        const githubRepoRegex = /https?:\/\/github\.com\/([^\/]+)\/([^\/]+)(?:\/)?$/;
+
+        const fileMatch = message.content.match(githubFileRegex);
+        const repoMatch = message.content.match(githubRepoRegex);
+
+        if (fileMatch || repoMatch) {
+            try {
+                let codeContent = '';
+                let contextType = '';
+
+                if (fileMatch) {
+                    const [, owner, repo, branch, filePath] = fileMatch;
+                    const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${filePath}`;
+                    const response = await axios.get(rawUrl, { responseType: 'text', timeout: 10000 });
+                    codeContent = response.data;
+                    contextType = `File: ${filePath}`;
+                } else if (repoMatch) {
+                    const [, owner, repo] = repoMatch;
+                    const branches = ['main', 'master'];
+                    for (const branch of branches) {
+                        try {
+                            const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/README.md`;
+                            const response = await axios.get(rawUrl, { responseType: 'text', timeout: 5000 });
+                            codeContent = response.data;
+                            contextType = `Repository: ${owner}/${repo} (README)`;
+                            break;
+                        } catch (e) { continue; }
+                    }
+                }
+
+                if (codeContent) {
+                    if (typeof codeContent !== 'string') codeContent = JSON.stringify(codeContent);
+                    const truncatedCode = codeContent.substring(0, 4000);
+
+                    await addToHistory('system', `[Context] The user provided a GitHub link. Here is the content of ${contextType}:\n\`\`\`\n${truncatedCode}\n\`\`\``);
+
+                    const analysisResponse = await axios.post(
+                        'https://openrouter.ai/api/v1/chat/completions',
+                        {
+                            model: 'openai/gpt-4o-mini',
+                            messages: [
+                                { role: 'system', content: 'You are an expert coder. Analyze the provided code/repo content.' },
+                                { role: 'user', content: `Analyze this ${contextType}:\n${truncatedCode}\n\nUser Question: ${message.content}` }
+                            ],
+                            max_tokens: 1500
+                        },
+                        { headers: { 'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}` } }
+                    );
+
+                    const result = analysisResponse.data?.choices?.[0]?.message?.content;
+                    if (result) {
+                        await message.reply(result.substring(0, 2000));
+                        await addToHistory('assistant', result);
+                    }
+                    return;
+                }
+            } catch (e) {
+                console.error('GitHub Analysis Error:', e.message);
+            }
+        }
 
         // ═══════════════════════════════════════════════════════════════
-        // IMAGE/GITHUB LOGIC (Restored)
+        // IMAGE ANALYSIS
         // ═══════════════════════════════════════════════════════════════
-        // I will copy the logic structure but ensure addToHistory is used.
-
-        // ... (I'll skip specific logic details for now to fit limits, but assumes Standard Implementation) ...
+        const imageAttachment = message.attachments.find(att => att.contentType?.startsWith('image/'));
+        if (imageAttachment) {
+            try {
+                const visionResponse = await axios.post(
+                    'https://openrouter.ai/api/v1/chat/completions',
+                    {
+                        model: 'openai/gpt-4o-mini',
+                        messages: [
+                            {
+                                role: 'user',
+                                content: [
+                                    { type: 'text', text: message.content || 'Analyze this image.' },
+                                    { type: 'image_url', image_url: { url: imageAttachment.url } }
+                                ]
+                            }
+                        ]
+                    },
+                    { headers: { 'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}` } }
+                );
+                const description = visionResponse.data?.choices?.[0]?.message?.content;
+                if (description) {
+                    await addToHistory('system', `[Image Context]: User uploaded an image. Analysis: ${description}`);
+                    await message.reply(description);
+                    await addToHistory('assistant', description);
+                    return;
+                }
+            } catch (e) { console.error('Image Analysis Error', e); }
+        }
 
         // Add current message to user's history
         await addToHistory('user', message.content);
