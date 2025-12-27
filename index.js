@@ -13,6 +13,16 @@ const VCStat = require('./models/VCStat');
 const MessageStat = require('./models/MessageStat');
 const Conversation = require('./models/Conversation');
 
+// ═══════════════════════════════════════════════════════════════
+// RENDER HOSTING FIX (Keep-Alive)
+// ═══════════════════════════════════════════════════════════════
+const express = require('express');
+const app = express();
+const port = process.env.PORT || 3000;
+app.get('/', (req, res) => res.send('🤖 Bot is online!'));
+app.listen(port, () => console.log(`🌍 Web Server listening on port ${port} (Render Requirement)`));
+// ═══════════════════════════════════════════════════════════════
+
 // Connect to MongoDB
 if (process.env.MONGO_URI) {
     mongoose.connect(process.env.MONGO_URI)
