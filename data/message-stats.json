@@ -1,0 +1,41 @@
+{
+  "1352260592546615457": {
+    "755305350294536302": {
+      "userName": "love011",
+      "totalMessages": 54,
+      "channelBreakdown": {
+        "1355820533156941844": {
+          "name": "🤖“bot-commands”",
+          "count": 15
+        },
+        "1454520609001177292": {
+          "name": "⭐⭐ai-chat⭐⭐",
+          "count": 39
+        }
+      },
+      "lastActive": 1766859245482
+    },
+    "1352259408284876858": {
+      "userName": "mangotreetech_80308",
+      "totalMessages": 1,
+      "channelBreakdown": {
+        "1454520609001177292": {
+          "name": "⭐⭐ai-chat⭐⭐",
+          "count": 1
+        }
+      },
+      "lastActive": 1766857089804
+    },
+    "1353654244108013609": {
+      "userName": "pankajkumar_34243",
+      "totalMessages": 4,
+      "channelBreakdown": {
+        "1454520609001177292": {
+          "name": "⭐⭐ai-chat⭐⭐",
+          "count": 4
+        }
+      },
+      "lastActive": 1766860222679
+    }
+  }
+}
