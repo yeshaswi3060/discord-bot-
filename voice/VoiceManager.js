@@ -154,44 +154,50 @@ class VoiceManager {
 
         console.log(`🗣️ Speaking: "${text}"`);
 
-        // FIX: Ensure Prism finds FFMPEG
-        if (!process.env.FFMPEG_PATH) {
-            process.env.FFMPEG_PATH = require('ffmpeg-static');
-            console.log(`🔧 Set FFMPEG_PATH to: ${process.env.FFMPEG_PATH}`);
-        }
-
-        // Google TTS (Free, URL-based)
-        // Split text if too long (200 chars limit for Google TTS free)
-        // We'll trust google-tts-api to handle split or just truncate for now
-
-        const url = googleTTS.getAudioUrl(text, {
-            lang: 'en',
-            slow: false,
-            host: 'https://translate.google.com',
-        });
-
-        const player = createAudioPlayer();
-        const resource = createAudioResource(url, {
-            inputType: StreamType.Arbitrary,
-            inlineVolume: true
-        });
-
-        player.play(resource);
-        connection.subscribe(player);
-
-        player.on('error', error => {
-            console.error('❌ Audio Player Error:', error.message);
-        });
-
-        player.on('stateChange', (oldState, newState) => {
-            console.log(`🎵 Audio Player State: ${oldState.status} -> ${newState.status}`);
-        });
-
-        return new Promise((resolve) => {
-            player.on(AudioPlayerStatus.Idle, () => {
-                resolve();
+        try {
+            // Google TTS (Free, URL-based)
+            const url = googleTTS.getAudioUrl(text, {
+                lang: 'en',
+                slow: false,
+                host: 'https://translate.google.com',
             });
-        });
+
+            // FIX: Download the stream manually using Axios with a User-Agent
+            // This prevents Google from blocking the request (403 Forbidden)
+            const response = await axios.get(url, {
+                responseType: 'stream',
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                }
+            });
+
+            const player = createAudioPlayer();
+            const resource = createAudioResource(response.data, {
+                inputType: StreamType.Arbitrary,
+                inlineVolume: true
+            });
+
+            player.play(resource);
+            connection.subscribe(player);
+
+            player.on('error', error => {
+                console.error('❌ Audio Player Error:', error.message);
+            });
+
+            // Debug state changes
+            // player.on('stateChange', (oldState, newState) => {
+            //     console.log(`🎵 Audio Player State: ${oldState.status} -> ${newState.status}`);
+            // });
+
+            return new Promise((resolve) => {
+                player.on(AudioPlayerStatus.Idle, () => {
+                    resolve();
+                });
+            });
+
+        } catch (error) {
+            console.error('❌ Speak Error:', error.message);
+        }
     }
 }
 
