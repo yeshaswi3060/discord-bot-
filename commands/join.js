@@ -13,13 +13,24 @@ module.exports = {
         }
 
         try {
-            joinVoiceChannel({
+            const connection = joinVoiceChannel({
                 channelId: channel.id,
                 guildId: channel.guild.id,
                 adapterCreator: channel.guild.voiceAdapterCreator,
+                selfDeaf: false, // Must be false to listen!
             });
 
-            await interaction.reply(`✅ Joined **${channel.name}**!`);
+            await interaction.reply(`✅ Joined **${channel.name}**! I am listening... 🎙️`);
+
+            // Initialize Voice Manager
+            // We need access to the client. Since interaction.client is available...
+            if (!interaction.client.voiceManager) {
+                const VoiceManager = require('../voice/VoiceManager');
+                interaction.client.voiceManager = new VoiceManager(interaction.client);
+            }
+
+            interaction.client.voiceManager.setupVoiceHandling(connection, channel.id);
+
         } catch (error) {
             console.error(error);
             await interaction.reply({ content: '❌ Failed to join voice channel.', ephemeral: true });
