@@ -22,16 +22,25 @@ class VoiceManager {
         this.processingUsers = new Set();
     }
 
-    setupVoiceHandling(connection, channelId) {
+    async setupVoiceHandling(connection, channelId) {
         console.log(`🎙️ Voice Handler attached to ${channelId}`);
 
-        // Play a greeting to confirm it works
-        this.speak(connection, "Hello! I am ready to listen.");
+        try {
+            // Wait for connection to be ready (Critical for playback)
+            await require('@discordjs/voice').entersState(connection, require('@discordjs/voice').VoiceConnectionStatus.Ready, 20_000);
+            console.log('✅ Connection Ready! Speaking greeting...');
 
-        connection.receiver.speaking.on('start', (userId) => {
-            if (this.processingUsers.has(userId) || this.isProcessing) return;
-            this.handleUserSpeaking(connection, userId);
-        });
+            // Play a greeting to confirm it works
+            await this.speak(connection, "I have joined the voice channel and I am listening.");
+
+            connection.receiver.speaking.on('start', (userId) => {
+                if (this.processingUsers.has(userId) || this.isProcessing) return;
+                this.handleUserSpeaking(connection, userId);
+            });
+        } catch (error) {
+            console.error('❌ Voice Connection Failed to become Ready:', error);
+            connection.destroy();
+        }
     }
 
     async handleUserSpeaking(connection, userId) {
