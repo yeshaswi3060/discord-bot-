@@ -143,6 +143,14 @@ class VoiceManager {
     async speak(connection, text) {
         if (!text) return;
 
+        console.log(`🗣️ Speaking: "${text}"`);
+
+        // FIX: Ensure Prism finds FFMPEG
+        if (!process.env.FFMPEG_PATH) {
+            process.env.FFMPEG_PATH = require('ffmpeg-static');
+            console.log(`🔧 Set FFMPEG_PATH to: ${process.env.FFMPEG_PATH}`);
+        }
+
         // Google TTS (Free, URL-based)
         // Split text if too long (200 chars limit for Google TTS free)
         // We'll trust google-tts-api to handle split or just truncate for now
@@ -154,10 +162,21 @@ class VoiceManager {
         });
 
         const player = createAudioPlayer();
-        const resource = createAudioResource(url, { inputType: StreamType.Arbitrary });
+        const resource = createAudioResource(url, {
+            inputType: StreamType.Arbitrary,
+            inlineVolume: true
+        });
 
         player.play(resource);
         connection.subscribe(player);
+
+        player.on('error', error => {
+            console.error('❌ Audio Player Error:', error.message);
+        });
+
+        player.on('stateChange', (oldState, newState) => {
+            console.log(`🎵 Audio Player State: ${oldState.status} -> ${newState.status}`);
+        });
 
         return new Promise((resolve) => {
             player.on(AudioPlayerStatus.Idle, () => {
