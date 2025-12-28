@@ -239,12 +239,45 @@ if (fs.existsSync(commandsPath)) {
 }
 
 // Bot ready event
-client.once(Events.ClientReady, (readyClient) => {
+client.once(Events.ClientReady, async (readyClient) => {
     console.log('═══════════════════════════════════════════');
     console.log(`🤖 Bot is online!`);
     console.log(`📛 Logged in as: ${readyClient.user.tag}`);
     console.log(`🌐 Serving ${readyClient.guilds.cache.size} server(s)`);
     console.log(`🎙️ Voice channel tracking: ENABLED (MongoDB)`);
+
+    // 🔄 RECOVERY: Check for users already in VC (so we don't miss them)
+    console.log('🔄 Scanning for active voice sessions...');
+    let recoveredCount = 0;
+
+    for (const guild of readyClient.guilds.cache.values()) {
+        try {
+            // Ensure we have the latest voice states
+            // Iterating cache is safer for rate limits
+            for (const [memberId, state] of guild.voiceStates.cache) {
+                if (state.channelId && !state.member.user.bot) {
+                    const sessionKey = `${guild.id}-${memberId}`;
+                    if (!activeSessions.has(sessionKey)) {
+                        const channel = guild.channels.cache.get(state.channelId);
+                        if (channel) {
+                            activeSessions.set(sessionKey, {
+                                userId: memberId,
+                                userName: state.member?.user?.tag || 'Unknown User',
+                                channelId: channel.id,
+                                channelName: channel.name,
+                                guildId: guild.id,
+                                joinTime: Date.now() // Tracking starts NOW (Cannot recover past time)
+                            });
+                            recoveredCount++;
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            console.error(`Error recovering sessions for guild ${guild.name}:`, e);
+        }
+    }
+    console.log(`✅ Recovered ${recoveredCount} active sessions.`);
     console.log('═══════════════════════════════════════════');
 });
 
