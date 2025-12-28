@@ -20,7 +20,7 @@ module.exports = {
                 selfDeaf: false, // Must be false to listen!
             });
 
-            await interaction.reply(`✅ Joined **${channel.name}**! I am listening... 🎙️`);
+            await interaction.reply(`✅ Joined **${channel.name}**! I am listening... 🎙️ (v2)`);
 
             // Initialize Voice Manager
             // We need access to the client. Since interaction.client is available...
