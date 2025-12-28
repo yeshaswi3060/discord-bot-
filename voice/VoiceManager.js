@@ -152,24 +152,34 @@ class VoiceManager {
     async speak(connection, text) {
         if (!text) return;
 
-        console.log(`🗣️ Speaking: "${text}"`);
+        console.log(`🗣️ speaking() called with: "${text}"`);
+
+        // FIX: Ensure Prism finds FFMPEG (Restored)
+        if (!process.env.FFMPEG_PATH) {
+            try {
+                process.env.FFMPEG_PATH = require('ffmpeg-static');
+                console.log(`🔧 Set FFMPEG_PATH to: ${process.env.FFMPEG_PATH}`);
+            } catch (e) {
+                console.error('❌ Could not require ffmpeg-static:', e);
+            }
+        }
 
         try {
-            // Google TTS (Free, URL-based)
             const url = googleTTS.getAudioUrl(text, {
                 lang: 'en',
                 slow: false,
                 host: 'https://translate.google.com',
             });
+            console.log(`🔗 Generated TTS URL: ${url}`);
 
-            // FIX: Download the stream manually using Axios with a User-Agent
-            // This prevents Google from blocking the request (403 Forbidden)
+            console.log('⬇️ Fetching audio stream...');
             const response = await axios.get(url, {
                 responseType: 'stream',
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
                 }
             });
+            console.log(`✅ Stream status: ${response.status}`);
 
             const player = createAudioPlayer();
             const resource = createAudioResource(response.data, {
@@ -177,17 +187,21 @@ class VoiceManager {
                 inlineVolume: true
             });
 
+            console.log('▶️ Playing audio resource...');
             player.play(resource);
             connection.subscribe(player);
 
             player.on('error', error => {
-                console.error('❌ Audio Player Error:', error.message);
+                console.error('❌ Audio Player Error:', error.message, error);
             });
 
-            // Debug state changes
-            // player.on('stateChange', (oldState, newState) => {
-            //     console.log(`🎵 Audio Player State: ${oldState.status} -> ${newState.status}`);
-            // });
+            player.on('stateChange', (oldState, newState) => {
+                console.log(`🎵 Player State: ${oldState.status} -> ${newState.status}`);
+            });
+
+            player.on(AudioPlayerStatus.Idle, () => {
+                console.log('⏹️ Audio finished (Idle)');
+            });
 
             return new Promise((resolve) => {
                 player.on(AudioPlayerStatus.Idle, () => {
@@ -197,6 +211,10 @@ class VoiceManager {
 
         } catch (error) {
             console.error('❌ Speak Error:', error.message);
+            if (error.response) {
+                console.error('   Status:', error.response.status);
+                console.error('   Data:', error.response.data);
+            }
         }
     }
 }
