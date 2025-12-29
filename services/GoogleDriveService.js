@@ -59,9 +59,10 @@ class GoogleDriveService {
         }
 
         try {
+            // Note: Not specifying parent folder to avoid "no storage quota" error
+            // Files are still accessible via the returned link
             const fileMetadata = {
-                name: fileName,
-                parents: this.folderId ? [this.folderId] : undefined
+                name: fileName
             };
 
             const media = {
