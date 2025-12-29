@@ -10,38 +10,48 @@ class FileUploadService {
 
     /**
      * Upload a file to file.io
-     * Files expire after 14 days
      * @param {string} filePath - Local path to the file
      * @param {string} fileName - Name for the file
-     * @returns {object|null} - { url, expires } or null on error
+     * @returns {object|null} - { url } or null on error
      */
     async uploadFile(filePath, fileName) {
         try {
-            console.log(`📤 Uploading ${fileName} to file.io...`);
+            // Check if file exists
+            if (!fs.existsSync(filePath)) {
+                console.error('❌ File not found:', filePath);
+                return null;
+            }
+
+            const stats = fs.statSync(filePath);
+            console.log(`📤 Uploading ${fileName} (${Math.round(stats.size / 1024)}KB) to file.io...`);
 
             const form = new FormData();
             form.append('file', fs.createReadStream(filePath), fileName);
 
             const response = await axios.post('https://file.io', form, {
-                headers: {
-                    ...form.getHeaders()
-                },
-                maxContentLength: Infinity,
-                maxBodyLength: Infinity
+                headers: form.getHeaders(),
+                timeout: 120000, // 2 minute timeout
+                maxContentLength: 100 * 1024 * 1024, // 100MB max
+                maxBodyLength: 100 * 1024 * 1024
             });
 
-            if (response.data.success) {
-                console.log(`✅ Uploaded: ${response.data.link}`);
+            console.log('📥 file.io response:', JSON.stringify(response.data));
+
+            if (response.data && response.data.success && response.data.link) {
+                console.log(`✅ Uploaded successfully: ${response.data.link}`);
                 return {
-                    url: response.data.link,
-                    expires: response.data.expires || '14 days'
+                    url: response.data.link
                 };
             } else {
-                console.error('❌ file.io upload failed:', response.data);
+                console.error('❌ file.io upload failed - response:', response.data);
                 return null;
             }
         } catch (error) {
             console.error('❌ Upload error:', error.message);
+            if (error.response) {
+                console.error('   Response status:', error.response.status);
+                console.error('   Response data:', error.response.data);
+            }
             return null;
         }
     }
