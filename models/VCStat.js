@@ -13,7 +13,28 @@ const vcStatSchema = new mongoose.Schema({
             time: { type: Number, default: 0 },
             sessions: { type: Number, default: 0 }
         })
-    }
+    },
+    // Daily stats - keyed by "YYYY-MM-DD"
+    dailyStats: {
+        type: Map,
+        of: new mongoose.Schema({
+            time: { type: Number, default: 0 },
+            sessions: { type: Number, default: 0 }
+        })
+    },
+    // Monthly stats - keyed by "YYYY-MM"
+    monthlyStats: {
+        type: Map,
+        of: new mongoose.Schema({
+            time: { type: Number, default: 0 },
+            sessions: { type: Number, default: 0 }
+        })
+    },
+    // Recent sessions for 24-hour calculation
+    recentSessions: [{
+        joinTime: { type: Number },
+        duration: { type: Number }
+    }]
 });
 
 // Compound index to ensure unique stats per user per guild

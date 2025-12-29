@@ -116,16 +116,31 @@ client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
                 });
 
                 // 2. Update Stats (Upsert)
+                // Generate date keys for daily/monthly tracking
+                const now = new Date();
+                const dateKey = now.toISOString().split('T')[0]; // "YYYY-MM-DD"
+                const monthKey = dateKey.substring(0, 7); // "YYYY-MM"
+
                 const update = {
                     $inc: {
                         totalTime: duration,
                         sessionCount: 1,
                         [`channelBreakdown.${session.channelId}.time`]: duration,
-                        [`channelBreakdown.${session.channelId}.sessions`]: 1
+                        [`channelBreakdown.${session.channelId}.sessions`]: 1,
+                        [`dailyStats.${dateKey}.time`]: duration,
+                        [`dailyStats.${dateKey}.sessions`]: 1,
+                        [`monthlyStats.${monthKey}.time`]: duration,
+                        [`monthlyStats.${monthKey}.sessions`]: 1
                     },
                     $set: {
                         userName: userName,
                         [`channelBreakdown.${session.channelId}.name`]: session.channelName
+                    },
+                    $push: {
+                        recentSessions: {
+                            $each: [{ joinTime: session.joinTime, duration }],
+                            $slice: -100 // Keep last 100 sessions max
+                        }
                     }
                 };
 
@@ -169,16 +184,31 @@ client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
                 });
 
                 // Update Stats
+                // Generate date keys for daily/monthly tracking
+                const now = new Date();
+                const dateKey = now.toISOString().split('T')[0]; // "YYYY-MM-DD"
+                const monthKey = dateKey.substring(0, 7); // "YYYY-MM"
+
                 const update = {
                     $inc: {
                         totalTime: duration,
                         sessionCount: 1,
                         [`channelBreakdown.${session.channelId}.time`]: duration,
-                        [`channelBreakdown.${session.channelId}.sessions`]: 1
+                        [`channelBreakdown.${session.channelId}.sessions`]: 1,
+                        [`dailyStats.${dateKey}.time`]: duration,
+                        [`dailyStats.${dateKey}.sessions`]: 1,
+                        [`monthlyStats.${monthKey}.time`]: duration,
+                        [`monthlyStats.${monthKey}.sessions`]: 1
                     },
                     $set: {
                         userName: userName,
                         [`channelBreakdown.${session.channelId}.name`]: session.channelName
+                    },
+                    $push: {
+                        recentSessions: {
+                            $each: [{ joinTime: session.joinTime, duration }],
+                            $slice: -100 // Keep last 100 sessions max
+                        }
                     }
                 };
 
