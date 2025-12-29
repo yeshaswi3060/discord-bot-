@@ -13,6 +13,10 @@ const VCStat = require('./models/VCStat');
 const MessageStat = require('./models/MessageStat');
 const MessageLog = require('./models/MessageLog');
 const Conversation = require('./models/Conversation');
+const Recording = require('./models/Recording');
+
+// Import Voice Recorder
+const VoiceRecorder = require('./voice/VoiceRecorder');
 
 // ═══════════════════════════════════════════════════════════════
 // RENDER HOSTING FIX (Keep-Alive)
@@ -236,6 +240,11 @@ client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
 
         console.log(`🔄 ${userName} switched: #${oldState.channel.name} → #${newState.channel.name}`);
     }
+
+    // Handle voice recording (auto-record when users join)
+    if (client.voiceRecorder) {
+        client.voiceRecorder.handleVoiceStateUpdate(oldState, newState);
+    }
 });
 
 // Make Models accessible to commands
@@ -245,9 +254,13 @@ client.db = {
     MessageStat,
     MessageLog,
     Conversation,
+    Recording,
     formatDuration,
     activeSessions
 };
+
+// Initialize Voice Recorder
+client.voiceRecorder = new VoiceRecorder(client);
 
 // ═══════════════════════════════════════════════════════════════
 // COMMAND LOADING
