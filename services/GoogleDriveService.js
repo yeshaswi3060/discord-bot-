@@ -12,18 +12,35 @@ class GoogleDriveService {
 
     init() {
         try {
-            // Look for credentials file
-            const credentialsPath = path.join(__dirname, '..', 'mtt-working-space-964c905202c0.json');
+            let auth;
 
-            if (!fs.existsSync(credentialsPath)) {
-                console.warn('⚠️ Google Drive credentials not found. Recording upload disabled.');
-                return;
+            // Option 1: Try environment variable (for cloud hosting like Render)
+            if (process.env.GOOGLE_CREDENTIALS_JSON) {
+                console.log('📋 Loading Google credentials from environment variable...');
+                const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
+
+                auth = new google.auth.GoogleAuth({
+                    credentials: credentials,
+                    scopes: ['https://www.googleapis.com/auth/drive.file']
+                });
             }
+            // Option 2: Try local file (for local development)
+            else {
+                const credentialsPath = path.join(__dirname, '..', 'mtt-working-space-964c905202c0.json');
 
-            const auth = new google.auth.GoogleAuth({
-                keyFile: credentialsPath,
-                scopes: ['https://www.googleapis.com/auth/drive.file']
-            });
+                if (!fs.existsSync(credentialsPath)) {
+                    console.warn('⚠️ Google Drive credentials not found.');
+                    console.warn('   For local: Place credentials JSON file in project root');
+                    console.warn('   For cloud: Set GOOGLE_CREDENTIALS_JSON env variable');
+                    return;
+                }
+
+                console.log('📁 Loading Google credentials from file...');
+                auth = new google.auth.GoogleAuth({
+                    keyFile: credentialsPath,
+                    scopes: ['https://www.googleapis.com/auth/drive.file']
+                });
+            }
 
             this.drive = google.drive({ version: 'v3', auth });
             console.log('✅ Google Drive service initialized');
@@ -34,9 +51,6 @@ class GoogleDriveService {
 
     /**
      * Upload a file to Google Drive
-     * @param {string} filePath - Local path to the file
-     * @param {string} fileName - Name for the file in Drive
-     * @returns {string|null} - File URL or null on error
      */
     async uploadFile(filePath, fileName) {
         if (!this.drive) {
