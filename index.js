@@ -11,6 +11,7 @@ const mongoose = require('mongoose');
 const VCLog = require('./models/VCLog');
 const VCStat = require('./models/VCStat');
 const MessageStat = require('./models/MessageStat');
+const MessageLog = require('./models/MessageLog');
 const Conversation = require('./models/Conversation');
 
 // ═══════════════════════════════════════════════════════════════
@@ -242,6 +243,7 @@ client.db = {
     VCLog,
     VCStat,
     MessageStat,
+    MessageLog,
     Conversation,
     formatDuration,
     activeSessions
@@ -509,6 +511,17 @@ const PREFIX = '!';
 client.on(Events.MessageCreate, async (message) => {
     // Ignore bot messages
     if (message.author.bot) return;
+
+    // Log message for activity tracking (fire and forget)
+    if (message.guild) {
+        MessageLog.create({
+            guildId: message.guild.id,
+            userId: message.author.id,
+            channelId: message.channel.id,
+            channelName: message.channel.name,
+            timestamp: Date.now()
+        }).catch(err => console.error('MessageLog error:', err));
+    }
 
     // ═══════════════════════════════════════════════════════════════
     // AI CHAT - Respond to messages in "ai-chat" channel
