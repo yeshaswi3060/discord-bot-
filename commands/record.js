@@ -22,33 +22,58 @@ module.exports = {
         .addSubcommand(subcommand =>
             subcommand.setName('status')
                 .setDescription('Check current recording status')
+        )
+        .addSubcommand(subcommand =>
+            subcommand.setName('auto')
+                .setDescription('Toggle auto-recording when users join VC')
+                .addBooleanOption(option =>
+                    option.setName('enabled')
+                        .setDescription('Enable or disable auto-recording')
+                        .setRequired(true)
+                )
         ),
 
     async execute(interaction) {
-        const subcommand = interaction.options.getSubcommand();
-        const guildId = interaction.guild.id;
-        const voiceRecorder = interaction.client.voiceRecorder;
+        try {
+            const subcommand = interaction.options.getSubcommand();
+            const guildId = interaction.guild.id;
+            const voiceRecorder = interaction.client.voiceRecorder;
 
-        if (!voiceRecorder) {
-            return interaction.reply({ content: '❌ Voice recording is not initialized.', ephemeral: true });
-        }
-
-        // === START RECORDING ===
-        if (subcommand === 'start') {
-            const channel = interaction.options.getChannel('channel');
-
-            // Check if already recording
-            if (voiceRecorder.isRecording(guildId)) {
-                const session = voiceRecorder.getRecordingInfo(guildId);
-                return interaction.reply({
-                    content: `❌ Already recording **#${session.voiceChannel.name}**!\nUse \`/record stop\` first.`,
-                    ephemeral: true
-                });
+            if (!voiceRecorder) {
+                return interaction.reply({ content: '❌ Voice recording is not initialized.', ephemeral: true });
             }
 
-            await interaction.deferReply();
+            // === AUTO TOGGLE ===
+            if (subcommand === 'auto') {
+                const enabled = interaction.options.getBoolean('enabled');
+                voiceRecorder.setAutoRecord(guildId, enabled);
 
-            try {
+                const embed = new EmbedBuilder()
+                    .setColor(enabled ? '#00FF00' : '#FF0000')
+                    .setTitle(enabled ? '✅ Auto-Recording Enabled' : '⏹️ Auto-Recording Disabled')
+                    .setDescription(enabled
+                        ? 'Bot will now automatically start recording when users join voice channels.'
+                        : 'Auto-recording disabled. Use `/record start` to manually record.')
+                    .setTimestamp();
+
+                return interaction.reply({ embeds: [embed] });
+            }
+
+            // === START RECORDING ===
+            if (subcommand === 'start') {
+                const channel = interaction.options.getChannel('channel');
+
+                // Check if already recording
+                if (voiceRecorder.isRecording(guildId)) {
+                    const session = voiceRecorder.getRecordingInfo(guildId);
+                    return interaction.reply({
+                        content: `❌ Already recording **#${session.voiceChannel.name}**!\nUse \`/record stop\` first.`,
+                        ephemeral: true
+                    });
+                }
+
+                await interaction.deferReply();
+
                 const session = await voiceRecorder.startRecording(channel, interaction.guild);
 
                 if (session) {
@@ -65,23 +90,18 @@ module.exports = {
 
                     await interaction.editReply({ embeds: [embed] });
                 } else {
-                    await interaction.editReply({ content: '❌ Failed to start recording. Check bot permissions.' });
+                    await interaction.editReply({ content: '❌ Failed to start recording. Check bot permissions and try again.' });
                 }
-            } catch (error) {
-                console.error('Record start error:', error);
-                await interaction.editReply({ content: '❌ Error starting recording.' });
-            }
-        }
-
-        // === STOP RECORDING ===
-        else if (subcommand === 'stop') {
-            if (!voiceRecorder.isRecording(guildId)) {
-                return interaction.reply({ content: '❌ No active recording to stop.', ephemeral: true });
             }
 
-            await interaction.deferReply();
+            // === STOP RECORDING ===
+            else if (subcommand === 'stop') {
+                if (!voiceRecorder.isRecording(guildId)) {
+                    return interaction.reply({ content: '❌ No active recording to stop.', ephemeral: true });
+                }
 
-            try {
+                await interaction.deferReply();
+
                 const session = voiceRecorder.getRecordingInfo(guildId);
                 const channelName = session.voiceChannel.name;
 
@@ -104,42 +124,61 @@ module.exports = {
                             value: `[View on Google Drive](${result.driveLink})`,
                             inline: false
                         });
+                    } else if (result.tooShort) {
+                        embed.setDescription(`Recording from **#${channelName}** was too short to save.`);
+                        embed.setColor('#FFA500');
                     }
 
                     await interaction.editReply({ embeds: [embed] });
                 } else {
-                    await interaction.editReply({ content: '⚠️ Recording was too short or failed to save.' });
+                    await interaction.editReply({ content: '⚠️ Recording stopped but failed to save.' });
                 }
-            } catch (error) {
-                console.error('Record stop error:', error);
-                await interaction.editReply({ content: '❌ Error stopping recording.' });
-            }
-        }
-
-        // === STATUS ===
-        else if (subcommand === 'status') {
-            if (!voiceRecorder.isRecording(guildId)) {
-                return interaction.reply({
-                    content: '📭 No active recording.\nUse `/record start #channel` to start one.',
-                    ephemeral: true
-                });
             }
 
-            const session = voiceRecorder.getRecordingInfo(guildId);
-            const duration = Date.now() - session.startTime;
+            // === STATUS ===
+            else if (subcommand === 'status') {
+                const isAutoEnabled = voiceRecorder.isAutoRecordEnabled(guildId);
 
-            const embed = new EmbedBuilder()
-                .setColor('#FF0000')
-                .setTitle('🔴 Recording in Progress')
-                .addFields(
-                    { name: '📍 Channel', value: `#${session.voiceChannel.name}`, inline: true },
-                    { name: '⏱️ Duration', value: voiceRecorder.formatDuration(duration), inline: true },
-                    { name: '👥 Participants', value: `${session.participants.size}`, inline: true }
-                )
-                .setFooter({ text: 'Use /record stop to end recording' })
-                .setTimestamp();
+                if (!voiceRecorder.isRecording(guildId)) {
+                    const embed = new EmbedBuilder()
+                        .setColor('#808080')
+                        .setTitle('📭 No Active Recording')
+                        .setDescription('Use `/record start #channel` to start recording.')
+                        .addFields({
+                            name: '🔄 Auto-Record',
+                            value: isAutoEnabled ? '✅ Enabled' : '❌ Disabled',
+                            inline: true
+                        })
+                        .setTimestamp();
 
-            await interaction.reply({ embeds: [embed] });
+                    return interaction.reply({ embeds: [embed] });
+                }
+
+                const session = voiceRecorder.getRecordingInfo(guildId);
+                const duration = Date.now() - session.startTime;
+
+                const embed = new EmbedBuilder()
+                    .setColor('#FF0000')
+                    .setTitle('🔴 Recording in Progress')
+                    .addFields(
+                        { name: '📍 Channel', value: `#${session.voiceChannel.name}`, inline: true },
+                        { name: '⏱️ Duration', value: voiceRecorder.formatDuration(duration), inline: true },
+                        { name: '👥 Participants', value: `${session.participants.size}`, inline: true },
+                        { name: '🔄 Auto-Record', value: isAutoEnabled ? '✅ Enabled' : '❌ Disabled', inline: true }
+                    )
+                    .setFooter({ text: 'Use /record stop to end recording' })
+                    .setTimestamp();
+
+                await interaction.reply({ embeds: [embed] });
+            }
+        } catch (error) {
+            console.error('Record command error:', error);
+
+            if (interaction.deferred) {
+                await interaction.editReply({ content: '❌ An error occurred. Check console for details.' });
+            } else if (!interaction.replied) {
+                await interaction.reply({ content: '❌ An error occurred.', ephemeral: true });
+            }
         }
     },
 };
