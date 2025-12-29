@@ -14,18 +14,20 @@ module.exports = {
         ),
 
     async execute(interaction) {
-        await interaction.deferReply();
-
-        const limit = interaction.options.getInteger('limit') || 10;
-        const guildId = interaction.guild.id;
-
-        const { Recording } = interaction.client.db;
-
         try {
-            const recordings = await Recording.find({
-                guildId,
-                status: 'uploaded'
-            })
+            await interaction.deferReply();
+
+            const limit = interaction.options.getInteger('limit') || 10;
+            const guildId = interaction.guild.id;
+
+            const { Recording } = interaction.client.db;
+
+            if (!Recording) {
+                return interaction.editReply({ content: '❌ Recording database not available.' });
+            }
+
+            // Show all recordings (not just uploaded ones)
+            const recordings = await Recording.find({ guildId })
                 .sort({ createdAt: -1 })
                 .limit(limit);
 
@@ -36,7 +38,7 @@ module.exports = {
                 .setTimestamp();
 
             if (recordings.length === 0) {
-                embed.setDescription('No recordings found yet.\n\nRecordings are automatically created when users join voice channels.');
+                embed.setDescription('No recordings found yet.\n\nUse `/record start #channel` to start recording.');
                 return interaction.editReply({ embeds: [embed] });
             }
 
@@ -50,14 +52,15 @@ module.exports = {
                     minute: '2-digit'
                 });
 
-                const sizeKB = rec.fileSize ? Math.round(rec.fileSize / 1024) : 0;
-                const sizeMB = sizeKB > 1000 ? `${(sizeKB / 1024).toFixed(1)}MB` : `${sizeKB}KB`;
+                const statusEmoji = rec.status === 'uploaded' ? '✅' : rec.status === 'recording' ? '🔴' : '⚠️';
 
-                description += `📅 **${date}** • #${rec.channelName}\n`;
-                description += `⏱️ ${rec.durationFormatted} • 👥 ${rec.participantCount} participants • 📁 ${sizeMB}\n`;
+                description += `${statusEmoji} **${date}** • #${rec.channelName}\n`;
+                description += `⏱️ ${rec.durationFormatted || 'In progress'} • 👥 ${rec.participantCount || 0} participants\n`;
 
                 if (rec.driveViewLink) {
                     description += `🔗 [View Recording](${rec.driveViewLink})\n`;
+                } else if (rec.fileUrl) {
+                    description += `🔗 [Download Recording](${rec.fileUrl})\n`;
                 }
                 description += '\n';
             }
@@ -82,7 +85,11 @@ module.exports = {
 
         } catch (error) {
             console.error('Recordings Error:', error);
-            await interaction.editReply({ content: '❌ Error fetching recordings.' });
+            if (interaction.deferred) {
+                await interaction.editReply({ content: '❌ Error fetching recordings.' });
+            } else {
+                await interaction.reply({ content: '❌ Error fetching recordings.', ephemeral: true });
+            }
         }
     },
 };

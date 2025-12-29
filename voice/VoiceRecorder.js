@@ -245,16 +245,16 @@ class VoiceRecorder {
             // Delete PCM file
             try { fs.unlinkSync(session.pcmPath); } catch (e) { }
 
-            // Upload to Google Drive
-            let driveResult = null;
+            // Upload to file.io (free hosting)
+            let uploadResult = null;
             try {
-                const GoogleDriveService = require('../services/GoogleDriveService');
-                const driveFileName = `${session.guild.name}_${session.voiceChannel.name}_${new Date(session.startTime).toISOString().split('T')[0]}.mp3`;
+                const FileUploadService = require('../services/FileUploadService');
+                const uploadFileName = `${session.guild.name}_${session.voiceChannel.name}_${new Date(session.startTime).toISOString().split('T')[0]}.mp3`;
 
-                console.log('☁️ Uploading to Google Drive...');
-                driveResult = await GoogleDriveService.uploadFile(session.mp3Path, driveFileName);
-            } catch (driveErr) {
-                console.error('❌ Drive upload failed:', driveErr.message);
+                console.log('☁️ Uploading to file.io...');
+                uploadResult = await FileUploadService.uploadFile(session.mp3Path, uploadFileName);
+            } catch (uploadErr) {
+                console.error('❌ Upload failed:', uploadErr.message);
             }
 
             // Update database record
@@ -270,10 +270,8 @@ class VoiceRecorder {
                         participants: Array.from(session.participants),
                         participantCount: session.participants.size,
                         fileSize: mp3Stats.size,
-                        driveFileId: driveResult?.id,
-                        driveViewLink: driveResult?.viewLink,
-                        driveDownloadLink: driveResult?.downloadLink,
-                        status: driveResult ? 'uploaded' : 'failed'
+                        fileUrl: uploadResult?.url,
+                        status: uploadResult ? 'uploaded' : 'failed'
                     });
                 }
             } catch (dbErr) {
@@ -281,7 +279,7 @@ class VoiceRecorder {
             }
 
             // Clean up local MP3 file after upload
-            if (driveResult) {
+            if (uploadResult) {
                 try { fs.unlinkSync(session.mp3Path); } catch (e) { }
             }
 
@@ -292,7 +290,7 @@ class VoiceRecorder {
             return {
                 duration,
                 participants: session.participants.size,
-                driveLink: driveResult?.viewLink
+                driveLink: uploadResult?.url
             };
 
         } catch (error) {

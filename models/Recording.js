@@ -12,6 +12,7 @@ const recordingSchema = new mongoose.Schema({
     participants: [{ type: String }], // Array of user IDs
     participantCount: { type: Number, default: 0 },
     fileSize: { type: Number }, // in bytes
+    fileUrl: { type: String }, // file.io or other hosting URL
     driveFileId: { type: String },
     driveViewLink: { type: String },
     driveDownloadLink: { type: String },
