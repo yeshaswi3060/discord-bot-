@@ -66,8 +66,28 @@ class VoiceRecorder {
                 selfMute: true   // Mute ourselves
             });
 
-            // Wait for connection to be ready
-            await entersState(connection, VoiceConnectionStatus.Ready, 20_000);
+            // Handle connection state changes
+            connection.on(VoiceConnectionStatus.Disconnected, async () => {
+                console.log('⚠️ Voice connection disconnected, attempting to reconnect...');
+                try {
+                    await Promise.race([
+                        entersState(connection, VoiceConnectionStatus.Signalling, 5_000),
+                        entersState(connection, VoiceConnectionStatus.Connecting, 5_000),
+                    ]);
+                    // Seems to be reconnecting
+                } catch (error) {
+                    // Seems to be a real disconnect
+                    console.log('❌ Voice connection lost, stopping recording');
+                    this.stopRecording(guildId);
+                }
+            });
+
+            connection.on('error', (error) => {
+                console.error('❌ Voice connection error:', error.message);
+            });
+
+            // Wait for connection to be ready (60 second timeout for cloud hosting)
+            await entersState(connection, VoiceConnectionStatus.Ready, 60_000);
             console.log(`✅ Connected to #${voiceChannel.name} (${guild.name})`);
 
             // Create recording session
