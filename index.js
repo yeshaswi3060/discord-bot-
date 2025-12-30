@@ -929,17 +929,30 @@ client.on(Events.MessageCreate, async (message) => {
 
 // Login with error handling
 console.log('🔑 TOKEN EXISTS:', !!process.env.DISCORD_TOKEN);
+console.log('🔑 TOKEN LENGTH:', process.env.DISCORD_TOKEN?.length || 0);
 if (!process.env.DISCORD_TOKEN) {
     console.error('❌ DISCORD_TOKEN is not set! Add it to Render Environment Variables.');
     process.exit(1);
 }
 
+console.log('🔄 Attempting to login to Discord...');
+
+// Login with 30 second timeout
+const loginTimeout = setTimeout(() => {
+    console.error('❌ Login timeout! Discord login took more than 30 seconds.');
+    console.error('   This usually means network issues or an invalid token.');
+    process.exit(1);
+}, 30000);
+
 client.login(process.env.DISCORD_TOKEN)
     .then(() => {
-        console.log('✅ Login successful!');
+        clearTimeout(loginTimeout);
+        console.log('✅ Login promise resolved!');
     })
     .catch((error) => {
+        clearTimeout(loginTimeout);
         console.error('❌ Login failed:', error.message);
+        console.error('   Full error:', error);
         process.exit(1);
     });
 
