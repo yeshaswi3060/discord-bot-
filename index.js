@@ -928,5 +928,10 @@ client.on(Events.MessageCreate, async (message) => {
 });
 
 // Login
+console.log('🔑 TOKEN EXISTS:', !!process.env.DISCORD_TOKEN);
+if (!process.env.DISCORD_TOKEN) {
+    console.error('❌ DISCORD_TOKEN is not set! Add it to Render Environment Variables.');
+    process.exit(1);
+}
 client.login(process.env.DISCORD_TOKEN);
 // Force Render Redeploy
