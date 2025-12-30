@@ -961,8 +961,35 @@ client.on('error', (error) => {
     console.error('❌ Client error:', error);
 });
 
+client.on('disconnect', () => {
+    console.log('⚠️ Bot disconnected from Discord');
+});
+
+client.on('reconnecting', () => {
+    console.log('🔄 Bot reconnecting to Discord...');
+});
+
 process.on('unhandledRejection', (error) => {
     console.error('❌ Unhandled rejection:', error);
+});
+
+process.on('uncaughtException', (error) => {
+    console.error('❌ Uncaught exception:', error);
+    process.exit(1);
+});
+
+process.on('exit', (code) => {
+    console.log(`⚠️ Process exiting with code: ${code}`);
+});
+
+process.on('SIGTERM', () => {
+    console.log('⚠️ Received SIGTERM signal');
+    process.exit(0);
+});
+
+process.on('SIGINT', () => {
+    console.log('⚠️ Received SIGINT signal');
+    process.exit(0);
 });
 
 // Keepalive - ping self every 5 minutes to prevent Render from sleeping
@@ -974,5 +1001,4 @@ if (process.env.RENDER) {
     }, 5 * 60 * 1000);
 }
 
-// Trigger Render redeploy - Dec 30 2024 13:47
-
+console.log('🚀 Bot startup complete, waiting for events...');
