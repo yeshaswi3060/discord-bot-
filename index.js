@@ -927,11 +927,37 @@ client.on(Events.MessageCreate, async (message) => {
     if (commandName === 'help') message.reply('Use slash commands!');
 });
 
-// Login
+// Login with error handling
 console.log('🔑 TOKEN EXISTS:', !!process.env.DISCORD_TOKEN);
 if (!process.env.DISCORD_TOKEN) {
     console.error('❌ DISCORD_TOKEN is not set! Add it to Render Environment Variables.');
     process.exit(1);
 }
-client.login(process.env.DISCORD_TOKEN);
-// Force Render Redeploy
+
+client.login(process.env.DISCORD_TOKEN)
+    .then(() => {
+        console.log('✅ Login successful!');
+    })
+    .catch((error) => {
+        console.error('❌ Login failed:', error.message);
+        process.exit(1);
+    });
+
+// Handle unexpected errors
+client.on('error', (error) => {
+    console.error('❌ Client error:', error);
+});
+
+process.on('unhandledRejection', (error) => {
+    console.error('❌ Unhandled rejection:', error);
+});
+
+// Keepalive - ping self every 5 minutes to prevent Render from sleeping
+if (process.env.RENDER) {
+    setInterval(() => {
+        const url = process.env.RENDER_EXTERNAL_URL || 'https://discord-bot-lvtc.onrender.com';
+        require('axios').get(url).catch(() => { });
+        console.log('💓 Keepalive ping');
+    }, 5 * 60 * 1000);
+}
+
