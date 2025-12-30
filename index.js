@@ -927,7 +927,7 @@ client.on(Events.MessageCreate, async (message) => {
     if (commandName === 'help') message.reply('Use slash commands!');
 });
 
-// Login with error handling
+// Login with error handling and retry logic
 console.log('🔑 TOKEN EXISTS:', !!process.env.DISCORD_TOKEN);
 console.log('🔑 TOKEN LENGTH:', process.env.DISCORD_TOKEN?.length || 0);
 if (!process.env.DISCORD_TOKEN) {
@@ -935,26 +935,37 @@ if (!process.env.DISCORD_TOKEN) {
     process.exit(1);
 }
 
-console.log('🔄 Attempting to login to Discord...');
+// Login function with retry
+async function loginWithRetry(maxRetries = 3, timeoutMs = 60000) {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        console.log(`🔄 Login attempt ${attempt}/${maxRetries}...`);
 
-// Login with 30 second timeout
-const loginTimeout = setTimeout(() => {
-    console.error('❌ Login timeout! Discord login took more than 30 seconds.');
-    console.error('   This usually means network issues or an invalid token.');
+        try {
+            await Promise.race([
+                client.login(process.env.DISCORD_TOKEN),
+                new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('Login timeout')), timeoutMs)
+                )
+            ]);
+            console.log('✅ Login successful!');
+            return true;
+        } catch (error) {
+            console.error(`❌ Attempt ${attempt} failed:`, error.message);
+
+            if (attempt < maxRetries) {
+                const waitTime = attempt * 5000; // 5s, 10s, 15s
+                console.log(`⏳ Waiting ${waitTime / 1000}s before retry...`);
+                await new Promise(resolve => setTimeout(resolve, waitTime));
+            }
+        }
+    }
+
+    console.error('❌ All login attempts failed!');
     process.exit(1);
-}, 30000);
+}
 
-client.login(process.env.DISCORD_TOKEN)
-    .then(() => {
-        clearTimeout(loginTimeout);
-        console.log('✅ Login promise resolved!');
-    })
-    .catch((error) => {
-        clearTimeout(loginTimeout);
-        console.error('❌ Login failed:', error.message);
-        console.error('   Full error:', error);
-        process.exit(1);
-    });
+// Start login
+loginWithRetry();
 
 // Handle unexpected errors
 client.on('error', (error) => {
