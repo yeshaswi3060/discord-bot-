@@ -1,5 +1,11 @@
 // Discord Bot - Main Entry Point
-require('dotenv').config();
+// Only load .env file if not on Render (Render injects vars automatically)
+if (!process.env.RENDER) {
+    require('dotenv').config();
+    console.log('📂 Loaded .env file for local development');
+} else {
+    console.log('☁️ Running on Render - Environment variables injected automatically');
+}
 const { Client, Collection, GatewayIntentBits, Events, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
