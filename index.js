@@ -884,8 +884,50 @@ client.on(Events.MessageCreate, async (message) => {
             await addToHistory('assistant', aiResponse);
 
             if (aiResponse.length > 2000) {
-                const chunks = aiResponse.match(/.{1,1990}/gs) || [];
-                for (const chunk of chunks) await message.reply(chunk);
+                // Smart split by newline to preserve markdown
+                const chunks = [];
+                let currentChunk = '';
+                let insideCodeBlock = false;
+                let codeBlockLang = '';
+
+                const lines = aiResponse.split('\n');
+
+                for (const line of lines) {
+                    // Check if line enters or exits a code block
+                    if (line.startsWith('```')) {
+                        insideCodeBlock = !insideCodeBlock;
+                        if (insideCodeBlock) {
+                            codeBlockLang = line.slice(3).trim();
+                        } else {
+                            codeBlockLang = '';
+                        }
+                    }
+
+                    // If adding this line exceeds Discord limit (leaving room for codeblock tags)
+                    if (currentChunk.length + line.length + 10 > 1990) {
+                        if (insideCodeBlock) {
+                            currentChunk += '\n```'; // Close block before sending
+                        }
+
+                        chunks.push(currentChunk.trim());
+
+                        currentChunk = '';
+                        if (insideCodeBlock) {
+                            currentChunk = '```' + codeBlockLang + '\n'; // Re-open block in next chunk
+                        }
+                    }
+
+                    currentChunk += line + '\n';
+                }
+
+                if (currentChunk.trim()) {
+                    chunks.push(currentChunk.trim());
+                }
+
+                for (const chunk of chunks) {
+                    // Discord might throw an error if a chunk is somehow empty
+                    if (chunk) await message.reply(chunk);
+                }
             } else {
                 await message.reply(aiResponse);
             }

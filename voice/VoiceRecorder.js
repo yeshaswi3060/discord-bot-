@@ -6,6 +6,7 @@ const {
     entersState,
     getVoiceConnection
 } = require('@discordjs/voice');
+const { EmbedBuilder } = require('discord.js');
 const prism = require('prism-media');
 const fs = require('fs');
 const path = require('path');
@@ -17,6 +18,8 @@ class VoiceRecorder {
         this.client = client;
         this.activeRecordings = new Map(); // guildId -> recording session
         this.autoRecordEnabled = new Map(); // guildId -> boolean (default: false)
+        this.silenceTimers = new Map(); // guildId -> timeout (auto-leave after silence)
+        this.SILENCE_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes of silence before auto-leave
         this.recordingsDir = path.join(__dirname, '..', 'recordings');
 
         // Create recordings directory if it doesn't exist
@@ -247,14 +250,120 @@ class VoiceRecorder {
 
             // Upload to file.io (free hosting)
             let uploadResult = null;
-            try {
-                const FileUploadService = require('../services/FileUploadService');
-                const uploadFileName = `${session.guild.name}_${session.voiceChannel.name}_${new Date(session.startTime).toISOString().split('T')[0]}.mp3`;
+            let fileIoUrl = null;
+            let uploadedToDiscord = false;
 
-                console.log('☁️ Uploading to file.io...');
-                uploadResult = await FileUploadService.uploadFile(session.mp3Path, uploadFileName);
+            try {
+                const mp3Stats = fs.statSync(session.mp3Path);
+
+                // 1. Try to send to Discord audio channel directly
+                const audioChannel = session.guild.channels.cache.find(c => c.name === '👉audio👈' && c.isTextBased());
+
+                if (audioChannel) {
+                    try {
+                        console.log(`☁️ Uploading MP3 to #👉audio👈 channel... (${mp3Stats.size} bytes)`);
+                        const uploadFileName = `${session.guild.name}_${session.voiceChannel.name}_${new Date(session.startTime).toISOString().split('T')[0]}.mp3`;
+
+                        // Resolve participant usernames
+                        const participantList = [];
+                        for (const participantId of session.participants) {
+                            try {
+                                const member = await session.guild.members.fetch(participantId);
+                                participantList.push(`> <@${participantId}> (${member.user.tag})`);
+                            } catch (e) {
+                                participantList.push(`> <@${participantId}>`);
+                            }
+                        }
+
+                        const fileSizeMB = (mp3Stats.size / (1024 * 1024)).toFixed(2);
+
+                        const recordingEmbed = new EmbedBuilder()
+                            .setColor(0xFF4500)
+                            .setTitle('🎙️ Voice Recording Saved')
+                            .setDescription(`A voice session in **#${session.voiceChannel.name}** has been recorded and saved.`)
+                            .addFields(
+                                {
+                                    name: '📍 Voice Channel',
+                                    value: `#${session.voiceChannel.name}`,
+                                    inline: true
+                                },
+                                {
+                                    name: '⏱️ Duration',
+                                    value: this.formatDuration(duration),
+                                    inline: true
+                                },
+                                {
+                                    name: '📁 File Size',
+                                    value: `${fileSizeMB} MB`,
+                                    inline: true
+                                },
+                                {
+                                    name: '🕐 Started At',
+                                    value: `<t:${Math.floor(session.startTime / 1000)}:F>`,
+                                    inline: true
+                                },
+                                {
+                                    name: '🕐 Ended At',
+                                    value: `<t:${Math.floor(endTime / 1000)}:F>`,
+                                    inline: true
+                                },
+                                {
+                                    name: '👥 Participant Count',
+                                    value: `${session.participants.size} user(s)`,
+                                    inline: true
+                                },
+                                {
+                                    name: '🧑‍🤝‍🧑 Participants',
+                                    value: participantList.length > 0 ? participantList.join('\n') : 'No participants detected',
+                                    inline: false
+                                }
+                            )
+                            .setFooter({ text: `${session.guild.name} • Voice Recorder Bot` })
+                            .setTimestamp();
+
+                        await audioChannel.send({
+                            embeds: [recordingEmbed],
+                            files: [{
+                                attachment: session.mp3Path,
+                                name: uploadFileName
+                            }]
+                        });
+                        uploadedToDiscord = true;
+                        console.log('✅ Successfully uploaded to #👉audio👈 channel');
+                    } catch (discordUploadErr) {
+                        console.error('❌ Discord Upload failed (File likely too large):', discordUploadErr.message);
+                    }
+                } else {
+                    console.log('⚠️ Channel #👉audio👈 not found. Falling back to file.io.');
+                }
+
+                // 2. Fallback to file.io if Discord upload failed or channel was missing
+                if (!uploadedToDiscord) {
+                    const FileUploadService = require('../services/FileUploadService');
+                    const uploadFileName = `${session.guild.name}_${session.voiceChannel.name}_${new Date(session.startTime).toISOString().split('T')[0]}.mp3`;
+
+                    console.log('☁️ Uploading to file.io...');
+                    uploadResult = await FileUploadService.uploadFile(session.mp3Path, uploadFileName);
+                    fileIoUrl = uploadResult?.url;
+
+                    if (fileIoUrl && audioChannel) {
+                        const fallbackEmbed = new EmbedBuilder()
+                            .setColor(0xFFA500)
+                            .setTitle('🎙️ Voice Recording (External Link)')
+                            .setDescription(`Recording from **#${session.voiceChannel.name}** was too large for Discord.`)
+                            .addFields(
+                                { name: '⏱️ Duration', value: this.formatDuration(duration), inline: true },
+                                { name: '👥 Participants', value: `${session.participants.size} user(s)`, inline: true },
+                                { name: '🔗 Download Link', value: `[Click here to download](${fileIoUrl})`, inline: false }
+                            )
+                            .setFooter({ text: `${session.guild.name} • Voice Recorder Bot` })
+                            .setTimestamp();
+
+                        await audioChannel.send({ embeds: [fallbackEmbed] });
+                    }
+                }
             } catch (uploadErr) {
-                console.error('❌ Upload failed:', uploadErr.message);
+                console.error('❌ General Upload error:', uploadErr.message);
             }
 
             // Update database record
@@ -270,8 +379,8 @@ class VoiceRecorder {
                         participants: Array.from(session.participants),
                         participantCount: session.participants.size,
                         fileSize: mp3Stats.size,
-                        fileUrl: uploadResult?.url,
-                        status: uploadResult ? 'uploaded' : 'failed'
+                        fileUrl: fileIoUrl || 'Discord Attachment',
+                        status: (uploadedToDiscord || uploadResult) ? 'uploaded' : 'failed'
                     });
                 }
             } catch (dbErr) {
@@ -328,25 +437,87 @@ class VoiceRecorder {
     }
 
     /**
-     * Handle voice state updates - auto-record if enabled
+     * Handle voice state updates - auto-record on unmute (always active)
+     * and auto-record on join (only if autoRecordEnabled)
      */
     async handleVoiceStateUpdate(oldState, newState) {
         const guild = newState.guild || oldState.guild;
         if (!guild) return;
 
         const guildId = guild.id;
-
-        // Only auto-record if enabled for this guild
-        if (!this.isAutoRecordEnabled(guildId)) return;
-
         const isRecording = this.activeRecordings.has(guildId);
 
-        // User joined a voice channel
+        // ═══════════════════════════════════════════════════════════════
+        // ALWAYS ACTIVE: Auto-join when a user JOINS VC already unmuted
+        // ═══════════════════════════════════════════════════════════════
         if (!oldState.channel && newState.channel && !newState.member.user.bot) {
-            if (!isRecording) {
+            // Debug logging to see exactly what Discord sends
+            console.log(`📋 [DEBUG] ${newState.member.user.tag} joined #${newState.channel.name} | selfMute: ${newState.selfMute} | selfDeaf: ${newState.selfDeaf} | serverMute: ${newState.serverMute} | serverDeaf: ${newState.serverDeaf}`);
+
+            const isMuted = newState.selfMute || newState.serverMute || newState.selfDeaf || newState.serverDeaf;
+            if (!isMuted && !isRecording) {
+                console.log(`🎤 User ${newState.member.user.tag} joined #${newState.channel.name} already unmuted. Auto-joining to record!`);
                 await this.startRecording(newState.channel, guild);
+            } else if (!isMuted && isRecording) {
+                console.log(`📋 [DEBUG] Already recording, skipping join for ${newState.member.user.tag}`);
+            } else {
+                console.log(`📋 [DEBUG] User ${newState.member.user.tag} joined muted/deafened. Waiting for unmute.`);
             }
         }
+
+        // ═══════════════════════════════════════════════════════════════
+        // ALWAYS ACTIVE: Auto-join when a user UNMUTES/UNDEAFENS in VC
+        // ═══════════════════════════════════════════════════════════════
+        if (oldState.channel && newState.channel && !newState.member.user.bot) {
+            const wasSilent = oldState.selfMute || oldState.serverMute || oldState.selfDeaf || oldState.serverDeaf;
+            const isSilent = newState.selfMute || newState.serverMute || newState.selfDeaf || newState.serverDeaf;
+
+            // If they went from silent -> active
+            if (wasSilent && !isSilent) {
+                if (!isRecording) {
+                    console.log(`🎤 User ${newState.member.user.tag} unmuted/undeafened in #${newState.channel.name}. Auto-joining to record!`);
+                    await this.startRecording(newState.channel, guild);
+                }
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // ALWAYS ACTIVE: Check if everyone is muted → start silence timer
+        // ═══════════════════════════════════════════════════════════════
+        if (this.activeRecordings.has(guildId)) {
+            const session = this.activeRecordings.get(guildId);
+            if (session && session.voiceChannel) {
+                const nonBotMembers = session.voiceChannel.members.filter(m => !m.user.bot);
+
+                if (nonBotMembers.size > 0) {
+                    const allMuted = nonBotMembers.every(m => m.voice.selfMute || m.voice.serverMute);
+
+                    if (allMuted) {
+                        // Start silence timer if not already running
+                        if (!this.silenceTimers.has(guildId)) {
+                            console.log(`🔇 All users muted in #${session.voiceChannel.name}. Starting ${this.SILENCE_TIMEOUT_MS / 1000}s silence timer...`);
+                            const timer = setTimeout(async () => {
+                                console.log(`⏰ Silence timeout reached for #${session.voiceChannel.name}. Auto-stopping recording and leaving.`);
+                                this.silenceTimers.delete(guildId);
+                                await this.stopRecording(guildId);
+                            }, this.SILENCE_TIMEOUT_MS);
+                            this.silenceTimers.set(guildId, timer);
+                        }
+                    } else {
+                        // Someone is unmuted → cancel silence timer
+                        if (this.silenceTimers.has(guildId)) {
+                            console.log(`🔊 Someone unmuted in #${session.voiceChannel.name}. Cancelling silence timer.`);
+                            clearTimeout(this.silenceTimers.get(guildId));
+                            this.silenceTimers.delete(guildId);
+                        }
+                    }
+                }
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // ALWAYS ACTIVE: Handle leave/switch cleanup
+        // ═══════════════════════════════════════════════════════════════
 
         // User left a voice channel
         if (oldState.channel && !newState.channel) {
