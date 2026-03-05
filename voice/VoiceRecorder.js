@@ -17,6 +17,7 @@ class VoiceRecorder {
     constructor(client) {
         this.client = client;
         this.activeRecordings = new Map(); // guildId -> recording session
+        this.pendingJoins = new Map(); // guildId -> channelId (tracks joining state to prevent race conditions)
         this.autoRecordEnabled = new Map(); // guildId -> boolean (default: false)
         this.silenceTimers = new Map(); // guildId -> timeout (auto-leave after silence)
         this.SILENCE_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes of silence before auto-leave
@@ -52,10 +53,12 @@ class VoiceRecorder {
         const guildId = guild.id;
 
         // Check if already recording in this guild
-        if (this.activeRecordings.has(guildId)) {
-            console.log(`⚠️ Already recording in guild ${guild.name}`);
+        if (this.activeRecordings.has(guildId) || this.pendingJoins.has(guildId)) {
+            console.log(`⚠️ Already recording or joining in guild ${guild.name}`);
             return null;
         }
+
+        this.pendingJoins.set(guildId, voiceChannel.id);
 
         try {
             console.log(`🎙️ Attempting to join #${voiceChannel.name}...`);
@@ -65,6 +68,7 @@ class VoiceRecorder {
                 channelId: voiceChannel.id,
                 guildId: guild.id,
                 adapterCreator: guild.voiceAdapterCreator,
+                group: this.client.user.id, // ISOLATE connection to the specific bot client
                 selfDeaf: false, // Must NOT be deaf to receive audio
                 selfMute: true   // Mute ourselves
             });
@@ -152,6 +156,7 @@ class VoiceRecorder {
             };
 
             this.activeRecordings.set(guildId, session);
+            this.pendingJoins.delete(guildId); // Connection complete, remove lock
 
             // Create database record (with error handling)
             try {
@@ -172,11 +177,13 @@ class VoiceRecorder {
             }
 
             console.log(`🔴 Recording started in #${voiceChannel.name}`);
+            this.pendingJoins.delete(guildId);
             return session;
 
         } catch (error) {
             console.error('❌ Failed to start recording:', error);
             this.activeRecordings.delete(guildId);
+            this.pendingJoins.delete(guildId);
             return null;
         }
     }
@@ -334,15 +341,15 @@ class VoiceRecorder {
                         console.error('❌ Discord Upload failed (File likely too large):', discordUploadErr.message);
                     }
                 } else {
-                    console.log('⚠️ Channel #👉audio👈 not found. Falling back to file.io.');
+                    console.log('⚠️ Channel #👉audio👈 not found. Falling back to catbox.moe.');
                 }
 
-                // 2. Fallback to file.io if Discord upload failed or channel was missing
+                // 2. Fallback to catbox.moe if Discord upload failed or channel was missing
                 if (!uploadedToDiscord) {
                     const FileUploadService = require('../services/FileUploadService');
                     const uploadFileName = `${session.guild.name}_${session.voiceChannel.name}_${new Date(session.startTime).toISOString().split('T')[0]}.mp3`;
 
-                    console.log('☁️ Uploading to file.io...');
+                    console.log('☁️ Uploading to catbox.moe...');
                     uploadResult = await FileUploadService.uploadFile(session.mp3Path, uploadFileName);
                     fileIoUrl = uploadResult?.url;
 
@@ -445,7 +452,7 @@ class VoiceRecorder {
         if (!guild) return;
 
         const guildId = guild.id;
-        const isRecording = this.activeRecordings.has(guildId);
+        const isRecording = this.activeRecordings.has(guildId) || this.pendingJoins.has(guildId);
 
         // ═══════════════════════════════════════════════════════════════
         // ALWAYS ACTIVE: Auto-join when a user JOINS VC already unmuted

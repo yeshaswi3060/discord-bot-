@@ -5,11 +5,11 @@ const FormData = require('form-data');
 
 class FileUploadService {
     constructor() {
-        console.log('📁 File Upload Service initialized (using file.io)');
+        console.log('📁 File Upload Service initialized (using catbox.moe)');
     }
 
     /**
-     * Upload a file to file.io
+     * Upload a file to catbox.moe
      * @param {string} filePath - Local path to the file
      * @param {string} fileName - Name for the file
      * @returns {object|null} - { url } or null on error
@@ -23,27 +23,28 @@ class FileUploadService {
             }
 
             const stats = fs.statSync(filePath);
-            console.log(`📤 Uploading ${fileName} (${Math.round(stats.size / 1024)}KB) to file.io...`);
+            console.log(`📤 Uploading ${fileName} (${Math.round(stats.size / 1024)}KB) to catbox.moe...`);
 
             const form = new FormData();
-            form.append('file', fs.createReadStream(filePath), fileName);
+            form.append('reqtype', 'fileupload');
+            form.append('fileToUpload', fs.createReadStream(filePath), fileName);
 
-            const response = await axios.post('https://file.io', form, {
+            const response = await axios.post('https://catbox.moe/user/api.php', form, {
                 headers: form.getHeaders(),
-                timeout: 120000, // 2 minute timeout
-                maxContentLength: 100 * 1024 * 1024, // 100MB max
-                maxBodyLength: 100 * 1024 * 1024
+                timeout: 300000, // 5 minute timeout for up to 200mb
+                maxContentLength: Infinity,
+                maxBodyLength: Infinity
             });
 
-            console.log('📥 file.io response:', JSON.stringify(response.data));
+            console.log('📥 catbox.moe response:', response.data);
 
-            if (response.data && response.data.success && response.data.link) {
-                console.log(`✅ Uploaded successfully: ${response.data.link}`);
+            if (response.data && response.data.startsWith('http')) {
+                console.log(`✅ Uploaded successfully: ${response.data}`);
                 return {
-                    url: response.data.link
+                    url: response.data
                 };
             } else {
-                console.error('❌ file.io upload failed - response:', response.data);
+                console.error('❌ catbox.moe upload failed - response:', response.data);
                 return null;
             }
         } catch (error) {

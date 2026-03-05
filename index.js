@@ -43,20 +43,28 @@ if (process.env.MONGO_URI) {
     console.warn('⚠️ MONGO_URI not found in .env! Database features will fail.');
 }
 
-// Create the Discord client with necessary intents
+// Create the primary Discord client
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.GuildVoiceStates, // Required for VC tracking
+        GatewayIntentBits.GuildVoiceStates,
     ]
 });
 
-// Collection to store commands
+// Create the secondary Discord client (Voice Recorder 2)
+const secondaryClient = new Client({
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildVoiceStates, // Only needs voice and basic guild intents
+    ]
+});
+
+// Collection to store commands (Primary Bot Only)
 client.commands = new Collection();
-client.imageContexts = new Map(); // Store prompts for image regeneration
+client.imageContexts = new Map();
 
 // ═══════════════════════════════════════════════════════════════
 // VOICE CHANNEL TRACKING SYSTEM
@@ -247,9 +255,84 @@ client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
         console.log(`🔄 ${userName} switched: #${oldState.channel.name} → #${newState.channel.name}`);
     }
 
-    // Handle voice recording (auto-record when users join)
-    if (client.voiceRecorder) {
-        client.voiceRecorder.handleVoiceStateUpdate(oldState, newState);
+    // ═══════════════════════════════════════════════════════════════
+    // DUAL BOT VOICE RECORDER DISPATCHER
+    // ═══════════════════════════════════════════════════════════════
+    if (client.voiceRecorder && secondaryClient.voiceRecorder) {
+        const primaryRecorder = client.voiceRecorder;
+        const secondaryRecorder = secondaryClient.voiceRecorder;
+
+        const isPrimaryActive = primaryRecorder.activeRecordings.has(guildId) || primaryRecorder.pendingJoins.has(guildId);
+        const isSecondaryActive = secondaryRecorder.activeRecordings.has(guildId) || secondaryRecorder.pendingJoins.has(guildId);
+
+        let primaryChannelId = null;
+        let secondaryChannelId = null;
+
+        if (primaryRecorder.activeRecordings.has(guildId)) {
+            primaryChannelId = primaryRecorder.activeRecordings.get(guildId).voiceChannel.id;
+        } else if (primaryRecorder.pendingJoins.has(guildId)) {
+            primaryChannelId = primaryRecorder.pendingJoins.get(guildId);
+        }
+
+        if (secondaryRecorder.activeRecordings.has(guildId)) {
+            secondaryChannelId = secondaryRecorder.activeRecordings.get(guildId).voiceChannel.id;
+        } else if (secondaryRecorder.pendingJoins.has(guildId)) {
+            secondaryChannelId = secondaryRecorder.pendingJoins.get(guildId);
+        }
+
+        const userCurrentChannelId = newState.channel?.id || oldState.channel?.id;
+
+        // STRICT DISPATCH ROUTING
+        if (primaryChannelId === userCurrentChannelId) {
+            // Event in Primary Bot's territory -> Only Primary sees it
+            primaryRecorder.handleVoiceStateUpdate(oldState, newState);
+
+        } else if (secondaryChannelId === userCurrentChannelId) {
+            // Event in Secondary Bot's territory -> Only Secondary sees it
+            secondaryRecorder.handleVoiceStateUpdate(oldState, newState);
+
+        } else {
+            // Event in a totally NEW channel. Who is free to take it?
+            if (!isPrimaryActive) {
+                // Primary is idle, give it the new channel
+                primaryRecorder.handleVoiceStateUpdate(oldState, newState);
+            } else if (!isSecondaryActive) {
+                // Primary is busy, but Secondary is idle! Give it to Secondary
+                // We MUST reconstruct the state objects using the secondary client's cache,
+                // otherwise it will try to use the primary's voiceAdapterCreator and fail to join.
+                const secGuild = secondaryClient.guilds.cache.get(guildId);
+                if (secGuild) {
+                    const secOldChannel = oldState.channel?.id ? secGuild.channels.cache.get(oldState.channel.id) : null;
+                    const secNewChannel = newState.channel?.id ? secGuild.channels.cache.get(newState.channel.id) : null;
+                    const secMember = secGuild.members.cache.get(newState.member.id) || newState.member;
+
+                    const secondaryStateOld = {
+                        guild: secGuild,
+                        channel: secOldChannel,
+                        member: secMember,
+                        selfMute: oldState.selfMute,
+                        serverMute: oldState.serverMute,
+                        selfDeaf: oldState.selfDeaf,
+                        serverDeaf: oldState.serverDeaf
+                    };
+                    const secondaryStateNew = {
+                        guild: secGuild,
+                        channel: secNewChannel,
+                        member: secMember,
+                        selfMute: newState.selfMute,
+                        serverMute: newState.serverMute,
+                        selfDeaf: newState.selfDeaf,
+                        serverDeaf: newState.serverDeaf
+                    };
+                    secondaryRecorder.handleVoiceStateUpdate(secondaryStateOld, secondaryStateNew);
+                } else {
+                    console.log(`⚠️ Secondary bot is not in guild ${guildId}!`);
+                }
+            } else {
+                // Both bots are completely busy in their own channels
+                console.log(`⚠️ Both bots are busy recording #${primaryChannelId} and #${secondaryChannelId}. Ignoring #${userCurrentChannelId}.`);
+            }
+        }
     }
 });
 
@@ -265,8 +348,11 @@ client.db = {
     activeSessions
 };
 
-// Initialize Voice Recorder
+// Initialize Voice Recorders for both clients
 client.voiceRecorder = new VoiceRecorder(client);
+secondaryClient.voiceRecorder = new VoiceRecorder(secondaryClient);
+// Connect db so secondary bot can also save models
+secondaryClient.db = client.db;
 
 // ═══════════════════════════════════════════════════════════════
 // COMMAND LOADING
@@ -986,7 +1072,7 @@ if (!process.env.DISCORD_TOKEN) {
 // Login function with retry
 async function loginWithRetry(maxRetries = 3, timeoutMs = 60000) {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        console.log(`🔄 Login attempt ${attempt}/${maxRetries}...`);
+        console.log(`\n🔄 Login attempt ${attempt}/${maxRetries}...`);
 
         try {
             await Promise.race([
@@ -995,7 +1081,21 @@ async function loginWithRetry(maxRetries = 3, timeoutMs = 60000) {
                     setTimeout(() => reject(new Error('Login timeout')), timeoutMs)
                 )
             ]);
-            console.log('✅ Login successful!');
+            console.log('✅ Primary Login successful!');
+
+            if (process.env.DISCORD_TOKEN_2) {
+                console.log('🔄 Secondary Bot Login attempt...');
+                await Promise.race([
+                    secondaryClient.login(process.env.DISCORD_TOKEN_2),
+                    new Promise((_, reject) =>
+                        setTimeout(() => reject(new Error('Login timeout')), timeoutMs)
+                    )
+                ]);
+                console.log('✅ Secondary Login successful!');
+            } else {
+                console.log('⚠️ No DISCORD_TOKEN_2 found. Running in Single-Bot Mode.');
+            }
+
             return true;
         } catch (error) {
             console.error(`❌ Attempt ${attempt} failed:`, error.message);
